@@ -1,0 +1,202 @@
+version: "3"
+
+vars:
+  ROOT_DIR: "{{.PWD}}"
+  SDL_DIR: "{{.ROOT_DIR}}/vendor/SDL"
+  SDL_BUILD_DIR: "{{.SDL_DIR}}/build"
+  FAUDIO_DIR: "{{.ROOT_DIR}}/vendor/FAudio"
+  FAUDIO_BUILD_DIR: "{{.FAUDIO_DIR}}/build"
+  BUILD_DIR: "{{.ROOT_DIR}}/build"
+  OUTPUT_DEV: "{{.BUILD_DIR}}/game_dev"
+  OUTPUT_RELEASE: "{{.BUILD_DIR}}/game_release"
+  GAME_LIB: "{{.BUILD_DIR}}/game.so"
+
+tasks:
+  default:
+    desc: Watch for code changes, rebuild and run automatically (hot-reload)
+    cmds:
+      - task: dev
+
+  build:
+    desc: Build the release version (statically linked)
+    deps: [sdl3, faudio]
+    cmds:
+      - task: build-release
+
+  build-lib:
+    desc: Build the game library
+    deps: [sdl3, faudio]
+    cmds:
+      - >
+        odin build game 
+        -collection:bindings=./bindings
+        -collection:game=./game
+        -collection:game_api=./game_api
+        -build-mode:dll
+        -extra-linker-flags:"-L{{.SDL_BUILD_DIR}} -L{{.FAUDIO_BUILD_DIR}} -Wl,-rpath,{{.SDL_BUILD_DIR}} -Wl,-rpath,{{.FAUDIO_BUILD_DIR}}" 
+        -out:{{.GAME_LIB}}
+
+  build-dev:
+    desc: Build the development version with hot-reloading
+    deps: [build-lib]
+    cmds:
+      - mkdir -p {{.BUILD_DIR}}
+      - >
+        odin build main_dev 
+        -collection:bindings=./bindings
+        -collection:game=./game
+        -collection:game_api=./game_api
+        -extra-linker-flags:"-L{{.SDL_BUILD_DIR}} -L{{.FAUDIO_BUILD_DIR}} -Wl,-rpath,{{.SDL_BUILD_DIR}} -Wl,-rpath,{{.FAUDIO_BUILD_DIR}} -ldl" 
+        -out:{{.OUTPUT_DEV}}
+
+  build-release:
+    desc: Build the release version
+    deps: [sdl3, faudio]
+    cmds:
+      - mkdir -p {{.BUILD_DIR}}
+      - >
+        odin build main_release 
+        -collection:bindings=./bindings
+        -collection:game=./game
+        -collection:game_api=./game_api
+        -extra-linker-flags:"-L{{.SDL_BUILD_DIR}} -L{{.FAUDIO_BUILD_DIR}} -Wl,-rpath,{{.SDL_BUILD_DIR}} -Wl,-rpath,{{.FAUDIO_BUILD_DIR}}" 
+        -out:{{.OUTPUT_RELEASE}}
+
+  run:
+    desc: Run the release version
+    cmds:
+      - task: run-release
+
+  run-dev:
+    desc: Run the development version with hot-reloading
+    deps: [build-dev]
+    cmds:
+      - "{{.OUTPUT_DEV}}"
+
+  run-release:
+    desc: Run the release version
+    deps: [build-release]
+    cmds:
+      - "{{.OUTPUT_RELEASE}}"
+
+  dev:
+    desc: Watch for code changes, rebuild and run automatically (hot-reload)
+    cmds:
+      - task: build-dev
+      - task: run-dev
+
+  sdl3:
+    desc: Build SDL3 from source
+    dir: "{{.SDL_BUILD_DIR}}"
+    cmds:
+      - mkdir -p {{.SDL_BUILD_DIR}}
+      - cmake ..
+      - make -j$(nproc)
+    status:
+      - test -f {{.SDL_BUILD_DIR}}/libSDL3.so
+
+  faudio:
+    desc: Build FAudio from source
+    deps: [sdl3]
+    dir: "{{.FAUDIO_BUILD_DIR}}"
+    cmds:
+      - mkdir -p {{.FAUDIO_BUILD_DIR}}
+      - >
+        cmake .. 
+        -DSDL3_DIR={{.SDL_BUILD_DIR}}
+      - make -j$(nproc)
+    status:
+      - test -f {{.FAUDIO_BUILD_DIR}}/libFAudio.so
+
+  add-sdl3:
+    desc: Download and extract SDL3 from latest 3.x.x release
+    vars:
+      LATEST_TAG:
+        sh: |
+          git ls-remote --tags https://github.com/libsdl-org/SDL.git | \
+          grep -o 'refs/tags/release-3[^{}]*$' | \
+          sort -V | tail -n 1 | sed 's|refs/tags/||'
+    cmds:
+      - |
+        mkdir -p vendor
+        rm -rf {{.SDL_DIR}} || true
+        echo "Downloading SDL3 from release: {{.LATEST_TAG}}"
+        curl -s -L https://github.com/libsdl-org/SDL/archive/{{.LATEST_TAG}}.tar.gz | tar -xz -C vendor
+        mv vendor/SDL-{{.LATEST_TAG}} {{.SDL_DIR}}
+
+  update-sdl3:
+    desc: Check for new SDL3 release and update SDL3
+    vars:
+      LATEST_TAG:
+        sh: |
+          git ls-remote --tags https://github.com/libsdl-org/SDL.git | \
+          grep -o 'refs/tags/release-3[^{}]*$' | \
+          sort -V | tail -n 1 | sed 's|refs/tags/||'
+    cmds:
+      - |
+        echo "Latest SDL3 release: {{.LATEST_TAG}}"
+        rm -rf {{.SDL_DIR}} || true
+        echo "Downloading SDL3 from release: {{.LATEST_TAG}}"
+        curl -s -L https://github.com/libsdl-org/SDL/archive/{{.LATEST_TAG}}.tar.gz | tar -xz -C vendor
+        mv vendor/SDL-{{.LATEST_TAG}} {{.SDL_DIR}}
+
+  add-faudio:
+    desc: Download and extract FAudio from latest release
+    vars:
+      LATEST_TAG:
+        sh: |
+          git ls-remote --tags https://github.com/FNA-XNA/FAudio.git | \
+          grep -o 'refs/tags/[0-9]\{2\}\.[0-9]\{2\}$' | \
+          sort -V | tail -n 1 | sed 's|refs/tags/||'
+    cmds:
+      - |
+        mkdir -p vendor
+        rm -rf {{.FAUDIO_DIR}} || true
+        echo "Downloading FAudio from release: {{.LATEST_TAG}}"
+        curl -s -L https://github.com/FNA-XNA/FAudio/archive/{{.LATEST_TAG}}.tar.gz | tar -xz -C vendor
+        mv vendor/FAudio-{{.LATEST_TAG}} {{.FAUDIO_DIR}}
+
+  update-faudio:
+    desc: Check for new FAudio release and update FAudio
+    vars:
+      LATEST_TAG:
+        sh: |
+          git ls-remote --tags https://github.com/FNA-XNA/FAudio.git | \
+          grep -o 'refs/tags/[0-9]\{2\}\.[0-9]\{2\}$' | \
+          sort -V | tail -n 1 | sed 's|refs/tags/||'
+    cmds:
+      - |
+        echo "Latest FAudio release: {{.LATEST_TAG}}"
+        rm -rf {{.FAUDIO_DIR}} || true
+        echo "Downloading FAudio from release: {{.LATEST_TAG}}"
+        curl -s -L https://github.com/FNA-XNA/FAudio/archive/{{.LATEST_TAG}}.tar.gz | tar -xz -C vendor
+        mv vendor/FAudio-{{.LATEST_TAG}} {{.FAUDIO_DIR}}
+
+  add-faudio-bindings:
+    desc: Download and extract Odin FAudio bindings from GitHub
+    cmds:
+      - |
+        mkdir -p bindings
+        rm -rf {{.ROOT_DIR}}/bindings/faudio || true
+        echo "Downloading Odin FAudio bindings from GitHub"
+        curl -s -L https://github.com/k-nrd/odin-faudio/archive/main.tar.gz | tar -xz -C bindings
+        mv bindings/odin-faudio-main {{.ROOT_DIR}}/bindings/faudio
+
+  update-faudio-bindings:
+    desc: Update Odin FAudio bindings
+    cmds:
+      - |
+        echo "Updating Odin FAudio bindings from GitHub"
+        rm -rf {{.ROOT_DIR}}/bindings/faudio || true
+        echo "Downloading Odin FAudio bindings from GitHub"
+        curl -s -L https://github.com/k-nrd/odin-faudio/archive/main.tar.gz | tar -xz -C bindings
+        mv bindings/odin-faudio-main {{.ROOT_DIR}}/bindings/faudio
+
+  clean:
+    desc: Clean all generated files
+    cmds:
+      - rm -rf {{.BUILD_DIR}}
+      - rm -rf {{.SDL_BUILD_DIR}}
+      - rm -rf {{.FAUDIO_BUILD_DIR}}
+      - rm -f {{.GAME_LIB}}
+      - rm -f game_*.so
