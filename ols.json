@@ -1,0 +1,21 @@
+{
+  "enable_semantic_tokens": false,
+  "enable_document_symbols": true,
+  "enable_hover": true,
+  "enable_snippets": true,
+  "checker_args": "-vet -strict-style",
+  "collections": [
+    {
+      "name": "bindings",
+      "path": "./bindings"
+    },
+    {
+      "name": "game",
+      "path": "./game"
+    },
+    {
+      "name": "game_api",
+      "path": "./game_api"
+    }
+  ]
+}
