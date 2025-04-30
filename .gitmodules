@@ -7,3 +7,6 @@
 [submodule "vendor/sokol-tools-bin"]
 	path = vendor/sokol-tools-bin
 	url = https://github.com/floooh/sokol-tools-bin
+[submodule "bindings/faudio"]
+	path = bindings/faudio
+	url = https://github.com/k-nrd/odin-faudio
