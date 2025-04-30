@@ -1,0 +1,9 @@
+[submodule "vendor/FAudio"]
+	path = vendor/FAudio
+	url = https://github.com/FNA-XNA/FAudio
+[submodule "vendor/SDL"]
+	path = vendor/SDL
+	url = https://github.com/libsdl-org/SDL
+[submodule "vendor/sokol-tools-bin"]
+	path = vendor/sokol-tools-bin
+	url = https://github.com/floooh/sokol-tools-bin

@@ -1,46 +1,50 @@
 # Project configuration
-PROJECT_NAME = odin-sdl-starter
-MAIN_DIR = src/main_release
-LIB_DIR = src/game
-BINDINGS_DIR = bindings
-VENDOR_DIR = vendor
-BUILD_DIR = build
+PROJECT_NAME := odin_sdl_starter
+MAIN_DIR := src/main
+LIB_DIR := src/game
+BINDINGS_DIR := bindings
+VENDOR_DIR := vendor
+BUILD_DIR := build
 
 # Third-party dependencies
-SDL_DIR = $(VENDOR_DIR)/SDL2
-IMGUI_DIR = $(VENDOR_DIR)/imgui
+SDL_DIR := $(VENDOR_DIR)/SDL
+FAUDIO_DIR := $(VENDOR_DIR)/FAudio
 
 ifeq ($(OS),Windows_NT)
-    DLL_EXT = .dll
-    LIB_PREFIX = 
-    BINARY_EXT = .exe
+    DLL_EXT := .dll
+    BINARY_EXT := .exe
 else
-    DLL_EXT = .so
-    LIB_PREFIX = lib
-    BINARY_EXT = 
+    DLL_EXT := .so
+    BINARY_EXT := 
 endif
 
 # Output files
-DEV_BINARY = $(BUILD_DIR)/$(PROJECT_NAME)_dev$(BINARY_EXT)
-RELEASE_BINARY = $(BUILD_DIR)/$(PROJECT_NAME)$(BINARY_EXT)
-DYLIB = $(BUILD_DIR)/$(LIB_PREFIX)$(PROJECT_NAME)_lib$(DLL_EXT)
+DEV_BINARY := $(BUILD_DIR)/$(PROJECT_NAME)_dev$(BINARY_EXT)
+RELEASE_BINARY := $(BUILD_DIR)/$(PROJECT_NAME)$(BINARY_EXT)
+DYLIB := $(BUILD_DIR)/lib$(PROJECT_NAME)$(DLL_EXT)
 
 # Build flags
-BASE_FLAGS = -collection:bindings=$(BINDINGS_DIR) -I$(SDL_DIR)/include -I$(IMGUI_DIR)
-DEV_FLAGS = -debug -define:HOT_RELOAD=true $(BASE_FLAGS)
-RELEASE_FLAGS = -o:speed -no-bounds-check -define:HOT_RELOAD=false $(BASE_FLAGS)
-DYLIB_FLAGS = -debug -build-mode:dll -no-entry-point $(BASE_FLAGS)
-LINKER_FLAGS = -L$(SDL_DIR)/build -lSDL2 -lGL
+# BUILD_TYPE values correspond to Build_Type enum in config.odin:
+# 0 = Development, 1 = Testing, 2 = Release
+BASE_FLAGS := -collection:bindings=$(BINDINGS_DIR) -define:PROJECT_NAME=$(PROJECT_NAME)
+DEV_FLAGS := -debug -o:minimal -show-timings -show-system-calls $(BASE_FLAGS)
+DEV_FLAGS += -define:BUILD_TYPE=0
+RELEASE_FLAGS := -o:speed -no-bounds-check $(BASE_FLAGS)
+RELEASE_FLAGS += -define:BUILD_TYPE=2
+DYLIB_FLAGS := -debug -build-mode:dll -no-entry-point -o:minimal $(BASE_FLAGS)
 
-.PHONY: all clean dev release preview update-deps build-lib
+# Include directories
+LINKER_FLAGS := -I$(SDL_DIR)/include -I$(FAUDIO_DIR)/include
+# Library search paths
+LINKER_FLAGS += -L$(SDL_DIR)/build -L$(FAUDIO_DIR)/build
+
+.PHONY: all clean dev release preview update-deps build-lib copy-libs
 
 # Default target builds release version
 all: release
 
 # Development build with hot-reload
-dev: | $(BUILD_DIR)
-	build-lib
-
+dev: build-lib | $(BUILD_DIR) copy-libs
 	@echo "Building development binary (with hot reload)..."
 	odin build $(MAIN_DIR) $(DEV_FLAGS) \
 		-out:$(DEV_BINARY) \
@@ -48,15 +52,12 @@ dev: | $(BUILD_DIR)
 	
 	@echo "Starting hot reload development environment..."
 	@echo "Hot reload environment running. Edit $(LIB_DIR)/*.odin files to see changes."
-	# watchexec monitors the game library directory for changes to Odin files.
-	# When a change is detected:
-	#  - --on-busy-update=restart: If changes happen during rebuilding, restart the process
-	#  - --clear: Clear the terminal before each run for better visibility
-	#  - The command rebuilds the library and immediately runs the game
-	@watchexec -w $(LIB_DIR) --exts odin --on-busy-update=restart --clear -- "make build-lib && $(DEV_BINARY)"
+	@# Run the binary once first, then start watchexec
+	@$(DEV_BINARY); \
+	watchexec -w $(LIB_DIR) --quiet --exts odin --on-busy-update=restart -- "make build-lib"
 
 # Release build (statically linked)
-release: | $(BUILD_DIR)
+release: | $(BUILD_DIR) copy-libs
 	@echo "Building optimized release binary..."
 	odin build $(MAIN_DIR) $(RELEASE_FLAGS) \
 		-collection:lib=$(LIB_DIR) \
@@ -70,8 +71,8 @@ preview: release
 
 # Build of dynamic library for hot reload
 build-lib: | $(BUILD_DIR)
-	@echo "Building hot-reloadable library..."
-	@odin build $(LIB_DIR) $(DYLIB_FLAGS) \
+	@echo "Building dynamic library for hot reload..."
+	odin build $(LIB_DIR) $(DYLIB_FLAGS) \
 		-out:$(DYLIB) \
 		-extra-linker-flags="$(LINKER_FLAGS)"
 
@@ -80,15 +81,17 @@ clean:
 	@echo "Cleaning build artifacts..."
 	@rm -rf $(BUILD_DIR)/*
 
+# Copy libraries to build directory
+copy-libs: | $(BUILD_DIR)
+	@echo "Copying libraries to build directory..."
+	@cp $(SDL_DIR)/build/libSDL3.so* $(BUILD_DIR)/
+	@cp $(FAUDIO_DIR)/build/libFAudio.so* $(BUILD_DIR)/
+
 # Update third-party dependencies
 update-deps:
-	@echo "Updating all git submodules..."
-	@git submodule update --init --recursive
 	@echo "Building CMake-based dependencies..."
-	@find $(VENDOR_DIR) -name "CMakeLists.txt" -exec dirname {} \; | while read dir; do \
-		echo "Building $$dir..." && \
-		cd $$dir && mkdir -p build && cd build && cmake .. && make -j$$(nproc); \
-	done
+	@mkdir -p $(SDL_DIR)/build && cd $(SDL_DIR) && cd build && cmake .. && make -j$$(nproc)
+	@mkdir -p $(FAUDIO_DIR)/build && cd $(FAUDIO_DIR) && cd build && cmake .. && make -j$$(nproc)
 
 # Update specific third-party dependency
 update-deps-%: | $(BUILD_DIR)
