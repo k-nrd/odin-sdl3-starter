@@ -53,11 +53,11 @@ run_game :: proc(exec_dir: string) {
 		run_with_hot_reload(exec_dir)
 	} else {
 		// Standard game loop without hot-reloading
-		game.game_state_init()
-		defer game.game_state_free()
+		state := game.game_state_init()
+		defer game.game_state_free(state)
 
 		// Main game loop
-		for game.game_step() {}
+		for game.game_step(state) {}
 	}
 }
 

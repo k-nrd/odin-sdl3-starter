@@ -24,14 +24,12 @@ LIB_FILENAME :: BASE_LIB_FILENAME + DLL_EXT
 // GameLib contains all function pointers loaded from the game library
 GameLib :: struct {
 	_lib:           dynlib.Library,
-	state_init:     proc(),
-	state_load:     proc(state_ptr: rawptr),
-	state_free:     proc(),
-	state_get_ptr:  proc() -> rawptr,
+	state_init:     proc() -> rawptr,
+	state_free:     proc(state: rawptr),
 	state_get_size: proc() -> int,
-	step:           proc() -> bool,
-	force_reload:   proc() -> bool,
-	force_reset:    proc() -> bool,
+	step:           proc(state: rawptr) -> bool,
+	force_reload:   proc(state: rawptr) -> bool,
+	force_reset:    proc(state: rawptr) -> bool,
 }
 
 // Global version counter for library files
@@ -52,15 +50,15 @@ run_with_hot_reload :: proc(exec_dir: string) {
 	}
 	defer unload_game_lib(&game_lib)
 
-	game_lib.state_init()
-	defer game_lib.state_free()
+	state := game_lib.state_init()
+	defer game_lib.state_free(state)
 
 	current_mod_time := mod_time
-	for current_mod_time = mod_time; game_lib.step(); {
+	for current_mod_time = mod_time; game_lib.step(state); {
 		mod_time = read_lib_modification_time(exec_dir) or_continue
 
-		reset := game_lib.force_reset()
-		reload := game_lib.force_reload() || mod_time != current_mod_time
+		reset := game_lib.force_reset(state)
+		reload := game_lib.force_reload(state) || mod_time != current_mod_time
 		if !(reload || reset) do continue
 
 		log.debugf("Reloading game library: last=%v new=%v", current_mod_time, mod_time)
@@ -70,11 +68,10 @@ run_with_hot_reload :: proc(exec_dir: string) {
 
 		if old_size != new_size || reset {
 			log.debug("State size changed or reset forced, reinitializing state")
-			game_lib.state_free()
-			new_game_lib.state_init()
+			game_lib.state_free(state)
+			state = new_game_lib.state_init()
 		} else {
 			log.debug("Preserving game state during hot-reload")
-			new_game_lib.state_load(game_lib.state_get_ptr())
 		}
 
 		unload_game_lib(&game_lib)

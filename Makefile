@@ -1,7 +1,7 @@
 # Project configuration
 PROJECT_NAME := odin_sdl_starter
-MAIN_DIR := src/main
-LIB_DIR := src/game
+MAIN_DIR := main
+LIB_DIR := game
 BINDINGS_DIR := bindings
 VENDOR_DIR := vendor
 BUILD_DIR := build
@@ -33,9 +33,8 @@ RELEASE_FLAGS := -o:speed -no-bounds-check $(BASE_FLAGS)
 RELEASE_FLAGS += -define:BUILD_TYPE=2
 DYLIB_FLAGS := -debug -build-mode:dll -no-entry-point -o:minimal $(BASE_FLAGS)
 
-# Include directories
+# Include directories then library search paths
 LINKER_FLAGS := -I$(SDL_DIR)/include -I$(FAUDIO_DIR)/include
-# Library search paths
 LINKER_FLAGS += -L$(SDL_DIR)/build -L$(FAUDIO_DIR)/build
 
 .PHONY: all clean dev release preview update-deps build-lib copy-libs
